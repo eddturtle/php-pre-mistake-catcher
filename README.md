@@ -1,0 +1,1 @@
+# php-pre-mistake-catcher
