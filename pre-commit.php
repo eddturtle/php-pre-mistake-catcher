@@ -60,17 +60,9 @@ echo "Would you like to run tests before commiting? [Y/n] ";
 
 $option = trim(exec('exec < /dev/tty && read input && echo $input'));
 if (strtolower($option) !== "n") {
-
-    $output = exec('which vagrant');
-    $isVagrant = !empty($output);
-
+    
     echo $green . "Running Tests..." . $reset . PHP_EOL;
-
-    if ($isVagrant) {
-        exec("vagrant ssh -c 'php /vagrant/vendor/bin/phpunit --configuration phpunit.xml'", $output, $returnCode);
-    } else {
-        exec("phpunit --configuration phpunit.xml", $output, $returnCode);
-    }
+    exec("phpunit --configuration phpunit.xml", $output, $returnCode);
 
     if ($returnCode !== 0) {
         $minimalTestSummary = array_pop($output);
