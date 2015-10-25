@@ -47,7 +47,10 @@ class PreCommit
 
             $this->checkProjectFor(["  dd(", PHP_EOL . "dd("], "dd()", self::WARNING);
             $this->checkProjectFor("<<<<<<<", "git conflict", self::WARNING);
-            $this->runTests();
+
+            if ($this->projectHasPhpUnit()) {
+                $this->runTests();
+            }
         }
     }
 
@@ -107,6 +110,11 @@ class PreCommit
             }
         }
         return $occurrences;
+    }
+
+    public function projectHasPhpUnit()
+    {
+        return isset($this->projectFiles['./' . $this->options['phpunit_config']]);
     }
 
     /**
