@@ -2,7 +2,10 @@
 <?php
 
 /*
- * Ideas: replace version_id with tag no, find deprecated fns.
+ * Future Ideas:
+ * - replace [version_id] with in project with uid.
+ * - find any deprecated fns and warn.
+ * - run tests from inside a vagrant box.
  */
 
 $app = new PreCommit();
@@ -24,6 +27,7 @@ class PreCommit
      */
     protected $options = [
         'phpunit_config' => 'phpunit.xml',
+        'vagrant_config' => 'Vagrantfile',
         'file_endings' => ['php', 'php5'],
         'project_root' => '.',
         'folder_exceptions' => [
@@ -37,9 +41,6 @@ class PreCommit
         $this->init();
     }
 
-    /**
-     * All the pre-processing should be complete by now, so start the script.
-     */
     public function init()
     {
         if ($this->checkEnv()) {
@@ -48,17 +49,21 @@ class PreCommit
             $this->checkProjectFor(["  dd(", PHP_EOL . "dd("], "dd()", self::WARNING);
             $this->checkProjectFor("<<<<<<<", "git conflict", self::WARNING);
 
-            if ($this->projectHasPhpUnit()) {
+            if ($this->usesVagrant()) {
+                Tools::text("Project uses Vagrant");
+            }
+            if ($this->usesPhpUnit()) {
+                Tools::text("Project uses PHPUnit");
                 $this->runTests();
             }
         }
     }
 
     /**
-     * Check to make sure this skip can run by checking environment for programs
-     * installed and their respective versions.
+     * Check to make sure this script can run by checking environment for programs
+     * installed and their versions.
      *
-     * @return bool if the environment is capable.
+     * @return bool if the environment is capable and the script should continue.
      */
     public function checkEnv()
     {
@@ -112,9 +117,16 @@ class PreCommit
         return $occurrences;
     }
 
-    public function projectHasPhpUnit()
+    public function usesVagrant()
     {
-        return isset($this->projectFiles['./' . $this->options['phpunit_config']]);
+        $fileExists = file_exists('./' . $this->options['vagrant_config']);
+        $binLocation = exec('which vagrant');
+        return $fileExists && !empty($binLocation);
+    }
+
+    public function usesPhpUnit()
+    {
+        return file_exists('./' . $this->options['phpunit_config']);
     }
 
     /**
@@ -123,7 +135,7 @@ class PreCommit
      */
     public function runTests()
     {
-        Tools::ask("Would you like to run tests before commiting?", function () {
+        Tools::ask("Would you like to run tests before your commit?", function () {
             Tools::text("Running Tests...", "green");
 
             list($output, $returnCode) = $this->runPhpUnit();
@@ -149,7 +161,11 @@ class PreCommit
      */
     public function runPhpUnit()
     {
-        exec("phpunit --configuration " . $this->options['phpunit_config'], $output, $returnCode);
+        $cmd = "phpunit --configuration " . $this->options['phpunit_config'];
+        if ($this->usesVagrant()) {
+            $cmd = "cd /vagrant && /usr/bin/php vendor/bin/{$cmd}'";
+        }
+        exec($cmd, $output, $returnCode);
         return [
             $output,
             $returnCode
@@ -158,7 +174,7 @@ class PreCommit
 }
 
 /**
- * This is a very a utility class, to aid the PreCommit class while
+ * This is a utility class, to aid the PreCommit class while
  * not containing any specifics on how the script is being run.
  */
 class Tools
@@ -250,6 +266,8 @@ class Tools
             if ($fileName !== "." && $fileName !== ".." && strpos($fileName, '.') !== 0) {
                 $fullDir = $folder . "/" . $fileName;
                 if (is_dir($fullDir)) {
+                    // Note: Recursive
+                    // If it's a folder, call itself pulling out any files within that folder.
                     $foundFiles = self::findFiles($fullDir, $fileEndings, $exceptions);
                     if ($foundFiles) {
                         $projectFiles[$fullDir] = $foundFiles;
@@ -266,6 +284,13 @@ class Tools
         return $projectFiles;
     }
 
+    /**
+     * Convert a multi-dimensional array to a single-dimension.
+     *
+     * @param array $array to flatten
+     *
+     * @return array a single dimension array.
+     */
     public static function flatten($array)
     {
         // http://stackoverflow.com/questions/1319903/how-to-flatten-a-multidimensional-array
@@ -276,6 +301,14 @@ class Tools
         return $return;
     }
 
+    /**
+     * Check if a big string contains any number of smaller strings.
+     *
+     * @param string|array $needle what to look for.
+     * @param string $haystack what to look in.
+     *
+     * @return bool if the string occurs at least once.
+     */
     public static function contains($needle, $haystack)
     {
         foreach ((array)$needle as $item) {
