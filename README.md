@@ -8,7 +8,11 @@ At the moment, the script will check for:
 
 * any stray `dd()` functions
 * remaining git conflicts (by looking for `<<<<<<<`)
-* any syntax errors (by using `php -l`)
+
+With future features to:
+*  check forany syntax errors (by using `php -l`)
+* find any deprecated fns and warn.
+* run tests from inside a vagrant box properly.
 
 ### And.. Tests
 
@@ -18,6 +22,6 @@ The script will also ask you if you'd like to run your tests, with a Y/n option,
 
 In the root of your PHP project run these commands to pull down the latest script and add it as a git hook.
 
-    wget https://raw.githubusercontent.com/eddturtle/php-pre-mistake-catcher/master/pre-commit.php
-    mv pre-commit.php .git/hooks/pre-commit
+    wget https://raw.githubusercontent.com/eddturtle/php-pre-mistake-catcher/master/PreCommit.php
+    mv PreCommit.php .git/hooks/pre-commit
     chmod +x .git/hooks/pre-commit
