@@ -2,7 +2,7 @@
 <?php
 
 /*
- *
+ * Ideas: replace version_id with tag no, find deprecated fns.
  */
 
 $app = new PreCommit();
@@ -33,13 +33,21 @@ class PreCommit
 
     public function __construct()
     {
-        // Set properties
         $this->projectName = ucfirst(basename(getcwd()));
+        $this->init();
+    }
 
-        // Start things running...
+    /**
+     * All the pre-processing should be complete by now, so start the script.
+     */
+    public function init()
+    {
         if ($this->checkEnv()) {
             $this->findProjectFiles();
-            $this->init();
+
+            $this->checkProjectFor(["  dd(", PHP_EOL . "dd("], "dd()", self::WARNING);
+            $this->checkProjectFor("<<<<<<<", "git conflict", self::WARNING);
+            $this->runTests();
         }
     }
 
@@ -71,42 +79,34 @@ class PreCommit
             $this->options['file_endings'],
             $this->options['folder_exceptions']
         );
+        $this->projectFiles = Tools::flatten($this->projectFiles);
         Tools::text("Found " . count($this->projectFiles) . " project files");
-    }
-
-    /**
-     * All the pre-processing should be complete by now, so start the script.
-     */
-    public function init()
-    {
-        $this->checkProjectFor(" dd(", "dd()", self::WARNING);
-        $this->checkProjectFor("<<<<<<<", "git conflict", self::ERROR);
-        $this->runTests();
     }
 
     /**
      * Look in every project file to see if a string exists.
      *
-     * @param string $lookFor  the exact string to look for.
+     * @param string $lookFor the exact string to look for.
      * @param string $whatIsIt what the string should be called in the message if found.
-     * @param const  $severity whether it's a warning or error.
+     * @param int $severity whether it's a warning or error.
+     *
+     * @return int the number of times the string is found.
      */
     public function checkProjectFor($lookFor, $whatIsIt, $severity)
     {
-        $occurances = 0;
-        $files = Tools::flatten($this->projectFiles);
-        foreach ($files as $fileName => $content) {
-            if (strpos($content, $lookFor) !== false) {
+        $occurrences = 0;
+        foreach ($this->projectFiles as $fileName => $content) {
+            if (Tools::contains($lookFor, $content)) {
                 $message = $whatIsIt . " found in " . $fileName;
                 if ($severity === self::WARNING) {
                     Tools::text("Warning: " . $message, "brown");
                 } else if ($severity === self::ERROR) {
                     Tools::text("Error: " . $message, "red");
                 }
-                $occurances++;
+                $occurrences++;
             }
         }
-        return $occurances;
+        return $occurrences;
     }
 
     /**
@@ -124,8 +124,7 @@ class PreCommit
                 Tools::text("Tests failed for {$this->projectName} with message:", "red");
                 Tools::text($output);
                 Tools::abortWithoutCommit();
-            }
-            else {
+            } else {
                 // Tests Succeeded
                 Tools::text("Tests Passed.", "green");
             }
@@ -160,7 +159,7 @@ class Tools
     /**
      * Ask a question to the user through the cli.
      *
-     * @param string  $question a message to display before the input.
+     * @param string $question a message to display before the input.
      * @param closure $positive the function to run if the input was yes.
      * @param closure $negative the function to run if the input was no.
      *
@@ -178,9 +177,12 @@ class Tools
     }
 
     /**
-     * @param $text
-     * @param null $color
-     * @param bool|true $newLine
+     * Print text to screen with a new line at the end with the option to
+     * choose text color.
+     *
+     * @param string $text the text to print.
+     * @param string $color the color name (if it exists in the colors array).
+     * @param bool $newLine whether to add a new line at the end.
      */
     public static function text($text, $color = null, $newLine = true)
     {
@@ -207,27 +209,46 @@ class Tools
         }
     }
 
+    /**
+     * Exit the application with an unsuccessful state.
+     */
     public static function abortWithoutCommit()
     {
         exit(1);
     }
 
+    /**
+     * A recursive function to find all the project files within a directory.
+     *
+     * @param string $folder the starting point, your root folder.
+     * @param array $fileEndings a list of file endings you are look for (empty will find all).
+     * @param array $exceptions a list of folders to ignore.
+     *
+     * @return array of files with their name as the key and content as value.
+     */
     public static function findFiles($folder = ".", $fileEndings = [], $exceptions = [])
     {
-        if (in_array($folder, $exceptions)) {
-            return false;
+        // Make sure the folder isn't in the exceptions list
+        // (and early return if it is).
+        foreach (explode('/', $folder) as $subfolder) {
+            if (in_array($subfolder, $exceptions)) {
+                return false;
+            }
         }
 
         $projectFiles = [];
         $files = scandir($folder);
         foreach ($files as $fileName) {
-            if ($fileName !== "." && strpos($fileName, '.') !== 0) {
+            if ($fileName !== "." && $fileName !== ".." && strpos($fileName, '.') !== 0) {
                 $fullDir = $folder . "/" . $fileName;
                 if (is_dir($fullDir)) {
-                    $projectFiles[$fullDir] = self::findFiles($fullDir, $fileEndings, $exceptions);
+                    $foundFiles = self::findFiles($fullDir, $fileEndings, $exceptions);
+                    if ($foundFiles) {
+                        $projectFiles[$fullDir] = $foundFiles;
+                    }
                 } else {
                     $extension = end(explode('.', $fileName));
-                    if (in_array($extension, $fileEndings)) {
+                    if (empty($fileEndings) || in_array($extension, $fileEndings)) {
                         $projectFiles[$fullDir] = file_get_contents($fullDir);
                     }
                 }
@@ -245,5 +266,15 @@ class Tools
             $return[$key] = $a;
         });
         return $return;
+    }
+
+    public static function contains($needle, $haystack)
+    {
+        foreach ((array)$needle as $item) {
+            if (strpos($haystack, $item) !== false) {
+                return true;
+            }
+        }
+        return false;
     }
 }
